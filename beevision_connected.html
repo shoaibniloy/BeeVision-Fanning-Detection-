@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#070711">
+<title>BeeVision · Live Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+:root{--bg:#070711;--bg2:#0d0d1a;--glass:rgba(255,255,255,0.05);--glass2:rgba(255,255,255,0.08);--border:rgba(255,255,255,0.09);--accent:#00e5ff;--accent-dim:rgba(0,229,255,0.15);--fan:#ff1744;--fan-dim:rgba(255,23,68,0.15);--idle:#00e676;--mov:#ffeb3b;--fly:#00bcd4;--text:#e0e0e0;--text-dim:#555;--text-mid:#888;--nav-h:70px;--hdr-h:60px;--safe-b:env(safe-area-inset-bottom,0px)}
+.light{--bg:#f0f4f8;--bg2:#fff;--glass:rgba(255,255,255,0.7);--glass2:rgba(255,255,255,0.9);--border:rgba(0,0,0,0.08);--text:#1e293b;--text-dim:#94a3b8;--text-mid:#64748b;--accent:#0077cc;--accent-dim:rgba(0,119,204,0.12);--fan:#c62828;--fan-dim:rgba(198,40,40,0.12);--idle:#2e7d32;--mov:#e65100;--fly:#0277bd}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;min-height:100dvh;transition:background .4s,color .4s}
+canvas{display:block}button{font-family:inherit;cursor:pointer;border:none;outline:none}
+input{font-family:inherit;outline:none}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+@keyframes fadeup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 14px var(--fan-dim)}50%{box-shadow:0 0 32px rgba(255,23,68,.4)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideright{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}
+
+/* ── SPLASH ── */
+#splash{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;align-items:center;justify-content:center;transition:opacity .5s}
+#splash.hide{opacity:0;pointer-events:none}
+.splash-box{width:min(420px,92vw);padding:36px 28px;background:var(--glass2);border:1px solid var(--border);border-radius:28px;backdrop-filter:blur(20px);animation:fadeup .5s ease}
+.splash-logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 20px;box-shadow:0 0 30px var(--accent-dim)}
+.splash-title{text-align:center;font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--accent),#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px}
+.splash-sub{text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:28px}
+.splash-label{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-mid);margin-bottom:8px}
+.splash-input{width:100%;padding:14px 16px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;font-family:'JetBrains Mono',monospace;transition:border .2s;margin-bottom:16px}
+.light .splash-input{background:rgba(0,0,0,.04)}
+.splash-input:focus{border-color:var(--accent)}
+.splash-input::placeholder{color:var(--text-dim)}
+.splash-btn{width:100%;padding:16px;background:var(--accent);color:#000;border-radius:14px;font-size:14px;font-weight:800;letter-spacing:.5px;transition:all .2s;margin-bottom:12px}
+.splash-btn:active{transform:scale(.97);opacity:.9}
+.splash-btn:disabled{opacity:.4;cursor:not-allowed}
+.splash-err{color:var(--fan);font-size:11px;text-align:center;min-height:16px}
+.splash-hint{text-align:center;font-size:11px;color:var(--text-dim);margin-top:12px;line-height:1.6}
+.splash-hint b{color:var(--accent)}
+
+/* ── HEADER ── */
+.hdr{position:fixed;top:0;left:0;right:0;z-index:100;height:calc(var(--hdr-h) + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px);display:flex;align-items:center;justify-content:space-between;padding-left:14px;padding-right:14px;background:rgba(7,7,17,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);transition:background .4s}
+.light .hdr{background:rgba(240,244,248,.9)}
+.hdr-brand{display:flex;align-items:center;gap:10px}
+.hdr-logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:17px}
+.hdr-name{font-weight:800;font-size:14px;background:linear-gradient(90deg,var(--accent),#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hdr-name span{font-weight:400;font-size:10px;-webkit-text-fill-color:var(--text-mid);color:var(--text-mid);display:block;margin-top:-2px}
+.hdr-right{display:flex;align-items:center;gap:7px}
+.conn-badge{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid;transition:all .3s}
+.conn-badge.live{background:var(--fan-dim);border-color:var(--fan);color:var(--fan)}
+.conn-badge.ok{background:rgba(0,230,118,.12);border-color:var(--idle);color:var(--idle)}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s ease-in-out infinite}
+.icon-btn{width:34px;height:34px;border-radius:50%;background:var(--glass2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s;color:var(--text)}
+.icon-btn:active{transform:scale(.9)}
+.viewer-badge{padding:4px 9px;border-radius:10px;background:var(--glass2);border:1px solid var(--border);font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-mid)}
+
+/* ── MAIN ── */
+.main{padding-top:calc(var(--hdr-h) + env(safe-area-inset-top,0px) + 8px);padding-bottom:calc(var(--nav-h) + var(--safe-b) + 24px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.tab{display:none;animation:fadeup .3s ease;padding:12px}
+.tab.active{display:block}
+.card{background:var(--glass);border:1px solid var(--border);border-radius:20px;overflow:hidden;backdrop-filter:blur(12px);margin-bottom:12px;transition:background .4s}
+.light .card{background:var(--glass2);box-shadow:0 2px 16px rgba(0,0,0,.06)}
+.ch{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px}
+.ct{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim)}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
+.sc{background:var(--glass2);border:1px solid var(--border);border-radius:12px;padding:9px 7px;text-align:center}
+.sc-l{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim)}
+.sc-v{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--accent);margin-top:2px;line-height:1}
+/* feed */
+.feed-wrap{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.feed-img{width:100%;height:100%;object-fit:contain;display:block}
+.feed-badge{position:absolute;top:8px;left:8px;display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700;color:#fff}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--fan);animation:pulse 1s ease-in-out infinite}
+.feed-info{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.8));padding:14px 10px 7px;font-size:9px;color:rgba(255,255,255,.6);font-family:'JetBrains Mono',monospace}
+/* metrics */
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.mc{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:16px 14px}
+.ml{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim)}
+.mv{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;color:var(--accent);line-height:1.1;margin-top:4px;letter-spacing:-1px}
+.mv.fc{color:var(--fan)}.mv.ic{color:var(--idle)}
+.ms{font-size:10px;color:var(--text-dim);margin-top:2px}
+/* status banner */
+.sb{padding:13px 16px;border-radius:16px;display:flex;align-items:center;gap:12px;margin-bottom:12px;border:1px solid;transition:all .4s}
+.sb.active{background:var(--fan-dim);border-color:var(--fan);animation:glow 2s ease-in-out infinite}
+.sb.idle{background:rgba(0,230,118,.08);border-color:var(--idle)}
+.sb-icon{font-size:24px}.sb-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.6}
+.sb-val{font-size:17px;font-weight:800;margin-top:1px}
+.sb.active .sb-val{color:var(--fan)}.sb.idle .sb-val{color:var(--idle)}
+/* flux gauge */
+.gw{padding:0 16px 14px}
+.gr{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.gl{font-size:10px;color:var(--text-dim)}
+.flux-track{height:6px;background:var(--glass2);border-radius:6px;overflow:hidden;border:1px solid var(--border)}
+.flux-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent),var(--fan));transition:width .8s cubic-bezier(.4,0,.2,1);position:relative}
+.flux-thr{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--fan);border-radius:2px;left:25%}
+/* bee list */
+.bl{padding:0 12px 12px}
+.br{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--border);animation:slideright .3s ease}
+.br:last-child{border-bottom:none}
+.bid{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);width:36px;flex-shrink:0}
+.bp{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.5px;flex-shrink:0;border:1px solid}
+.pf{background:var(--fan-dim);color:var(--fan);border-color:var(--fan)}
+.pi{background:rgba(0,230,118,.12);color:var(--idle);border-color:var(--idle)}
+.pm{background:rgba(255,235,59,.12);color:var(--mov);border-color:var(--mov)}
+.pfly{background:rgba(0,188,212,.12);color:var(--fly);border-color:var(--fly)}
+.pwlk{background:rgba(255,152,0,.12);color:#ff9800;border-color:#ff9800}
+.bbw{flex:1;height:4px;background:var(--glass2);border-radius:4px;overflow:hidden}
+.bb{height:100%;border-radius:4px;transition:width .6s ease}
+.bv{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-mid);width:46px;text-align:right;flex-shrink:0}
+/* airflow chips */
+.ao{display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 13px}
+.aoc{padding:5px 10px;border-radius:20px;background:var(--accent-dim);border:1px solid var(--accent);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent)}
+/* scatter canvas */
+.sc-wrap{position:relative;border-radius:12px;overflow:hidden;background:#050508;aspect-ratio:4/3}
+.sc-leg{display:flex;gap:10px;flex-wrap:wrap;padding:7px 14px 9px}
+.li{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600}
+.ld{width:8px;height:8px;border-radius:50%}
+/* controls */
+.ctrl-row{display:flex;gap:8px;padding:0 12px 12px}
+.ctrl-btn{flex:1;padding:12px 8px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid var(--border);background:var(--glass2);color:var(--text-mid);transition:all .2s}
+.ctrl-btn:active{transform:scale(.96)}
+.ctrl-btn.pause{border-color:var(--mov);color:var(--mov);background:rgba(255,235,59,.08)}
+.ctrl-btn.resume{border-color:var(--idle);color:var(--idle);background:rgba(0,230,118,.08)}
+.ctrl-btn.restart{border-color:var(--fan);color:var(--fan);background:var(--fan-dim)}
+/* settings */
+.sl{padding:0 12px 12px}
+.sr{padding:13px 0;border-bottom:1px solid var(--border)}
+.sr:last-child{border-bottom:none}
+.sm{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.sn{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-mid)}
+.sv{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--accent)}
+input[type=range]{width:100%;height:4px;border-radius:4px;outline:none;cursor:pointer;background:linear-gradient(to right,var(--accent) 0%,var(--accent) var(--pct,50%),var(--glass2) var(--pct,50%),var(--glass2) 100%);border:1px solid var(--border)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid var(--bg);box-shadow:0 0 10px var(--accent-dim)}
+.reset-btn{width:100%;padding:14px;background:var(--glass2);border:1px solid var(--border);border-radius:14px;color:var(--text-mid);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:all .2s;margin-top:4px}
+.reset-btn:active{background:var(--fan-dim);border-color:var(--fan);color:var(--fan)}
+
+/* Scatter controls */
+.sc-ctrls{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 12px 12px}
+.sc-zoom-row{display:flex;align-items:center;gap:8px}
+.sc-btn{width:42px;height:42px;border-radius:12px;background:var(--glass2);border:1px solid var(--border);color:var(--text-mid);font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .2s;touch-action:manipulation;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sc-btn:active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);transform:scale(.9)}
+.sc-btn.zoom{font-weight:900;font-size:20px;width:52px}
+.sc-btn.reset-v{font-size:13px;font-weight:700;width:52px;color:var(--text-dim)}
+.sc-dpad{display:grid;grid-template-columns:42px 42px 42px;grid-template-rows:42px 42px 42px;gap:5px}
+.sc-dpad .up{grid-column:2;grid-row:1}
+.sc-dpad .left{grid-column:1;grid-row:2}
+.sc-dpad .center{grid-column:2;grid-row:2;font-size:12px;font-weight:700}
+.sc-dpad .right{grid-column:3;grid-row:2}
+.sc-dpad .down{grid-column:2;grid-row:3}
+/* nav */
+.nav{position:fixed;bottom:0;left:0;right:0;z-index:100;height:calc(var(--nav-h)+var(--safe-b));padding-bottom:var(--safe-b);background:rgba(7,7,17,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-top:1px solid var(--border);display:flex;align-items:flex-start;padding-top:6px}
+.light .nav{background:rgba(240,244,248,.92)}
+.ntabs{display:flex;width:100%}
+.ntab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;background:transparent;color:var(--text-dim);font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;transition:all .2s;border-radius:12px;margin:0 4px}
+.ni{font-size:22px;line-height:1;transition:transform .2s}
+.ntab.active{color:var(--accent)}
+.ntab.active .ni{transform:scale(1.12)}
+.nb{width:20px;height:3px;border-radius:2px;background:var(--accent);margin-top:2px;transform:scaleX(0);transition:transform .25s cubic-bezier(.4,0,.2,1)}
+.ntab.active .nb{transform:scaleX(1)}
+/* disconnected overlay */
+#offline{display:none;position:fixed;inset:0;z-index:200;background:rgba(7,7,17,.92);backdrop-filter:blur(20px);align-items:center;justify-content:center;flex-direction:column;gap:16px}
+#offline.show{display:flex}
+#offline .spin{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@media(min-width:768px){
+  .stats-row{grid-template-columns:repeat(6,1fr)}
+  .m-grid{grid-template-columns:repeat(3,1fr)}
+  .tab{padding:16px;max-width:900px;margin:0 auto}
+  .feeds-g{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .feeds-g .card{margin-bottom:0}
+  .nav{top:var(--hdr-h);bottom:0;height:auto;width:80px;border-top:none;border-right:1px solid var(--border);flex-direction:column;align-items:center;padding-top:16px;padding-bottom:16px}
+  .ntabs{flex-direction:column;width:100%;gap:4px}
+  .ntab{width:58px;margin:0 auto;padding:10px 4px;border-radius:14px}
+  .ntab.active{background:var(--accent-dim)}
+  .nb{display:none}
+  .main{padding-left:80px;padding-bottom:24px}
+}
+@media(min-width:1100px){
+  .tab{max-width:1200px}
+  .m-grid{grid-template-columns:repeat(4,1fr)}
+  .ag{display:grid;grid-template-columns:3fr 2fr;gap:12px}
+  .ag .card{margin-bottom:0}
+}
+</style>
+</head>
+<body>
+
+<!-- ── SPLASH ── -->
+<div id="splash">
+  <div class="splash-box">
+    <div class="splash-logo">🐝</div>
+    <div class="splash-title">BeeVision</div>
+    <div class="splash-sub">Fanning Detection · Live Monitor</div>
+    <div class="splash-label">Session URL</div>
+    <input class="splash-input" id="urlInput" type="text"
+      placeholder="https://xxxx.ngrok-free.app"
+      autocorrect="off" autocapitalize="none" spellcheck="false">
+    <div class="splash-label">Description</div>
+    <input class="splash-input" id="noteInput" type="text"
+      placeholder="e.g. Hive #3 · Lab A  (optional)">
+    <button class="splash-btn" id="connectBtn" onclick="doConnect()">
+      📡  Connect &amp; Stream
+    </button>
+    <div class="splash-err" id="splashErr"></div>
+    <div class="splash-hint">
+      The <b>Session URL</b> is shown in the BeeVision Qt window<br>
+      after clicking the 📡 STREAM button.<br><br>
+      Works on any device, anywhere in the world.
+    </div>
+  </div>
+</div>
+
+<!-- ── OFFLINE OVERLAY ── -->
+<div id="offline">
+  <div class="spin"></div>
+  <div style="color:var(--text-mid);font-size:13px">Reconnecting…</div>
+</div>
+
+<!-- ── HEADER ── -->
+<header class="hdr" id="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-logo">🐝</div>
+    <div>
+      <div class="hdr-name">BeeVision<span id="noteDisplay">Fanning Monitor</span></div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="conn-badge live" id="connBadge">
+      <div class="conn-dot"></div><span id="connTxt">LIVE</span>
+    </div>
+    <div class="viewer-badge" id="viewerBadge">👁 1</div>
+    <button class="icon-btn" id="themeBtn">☀️</button>
+    <button class="icon-btn" onclick="disconnect()" title="Disconnect">⏏</button>
+  </div>
+</header>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <!-- TAB: LIVE -->
+  <div class="tab active" id="tab-live">
+    <div class="stats-row">
+      <div class="sc"><div class="sc-l">FAN</div><div class="sc-v" id="s-fan" style="color:var(--fan)">—</div></div>
+      <div class="sc"><div class="sc-l">Total</div><div class="sc-v" id="s-total">—</div></div>
+      <div class="sc"><div class="sc-l">Flux</div><div class="sc-v" id="s-flux">—</div></div>
+      <div class="sc"><div class="sc-l">Frame</div><div class="sc-v" id="s-frame" style="font-size:12px">—</div></div>
+    </div>
+    <div class="feeds-g">
+      <div class="card">
+        <div class="ch"><span class="ct">Tracking Feed</span>
+          <span style="font-size:10px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">640×480 · YOLO11n-pose</span></div>
+        <div style="padding:0 10px 10px">
+          <div class="feed-wrap">
+            <img class="feed-img" id="trackImg" src="" alt="">
+            <div class="feed-badge"><div class="live-dot"></div>LIVE</div>
+            <div class="feed-info">ByteTrack · FAN=red · IDL=green · MOV=cyan</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ct">Flux Heatmap</span>
+          <span style="font-size:10px;color:var(--text-dim)">Frame diff · JET colormap</span></div>
+        <div style="padding:0 10px 10px">
+          <div class="feed-wrap">
+            <img class="feed-img" id="heatImg" src="" alt="">
+            <div class="feed-badge">40% excl.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Remote controls -->
+    <div class="card">
+      <div class="ch"><span class="ct">Remote Control</span></div>
+      <div class="ctrl-row">
+        <button class="ctrl-btn pause" onclick="sendCmd('pause')">⏸ Pause</button>
+        <button class="ctrl-btn resume" onclick="sendCmd('resume')">▶ Resume</button>
+        <button class="ctrl-btn restart" onclick="sendCmd('restart')">↺ Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ANALYTICS -->
+  <div class="tab" id="tab-analytics">
+    <div class="ag">
+      <div class="card">
+        <div class="ch"><span class="ct">2D Scatter · Airflow Field</span></div>
+        <div style="padding:0 10px 0">
+          <div class="sc-leg">
+            <div class="li"><div class="ld" style="background:var(--fan)"></div><span style="color:var(--fan)">FAN</span></div>
+            <div class="li"><div class="ld" style="background:var(--mov)"></div><span style="color:var(--mov)">MOV</span></div>
+            <div class="li"><div class="ld" style="background:#4fc3f7"></div><span style="color:#4fc3f7">FLY</span></div>
+            <div class="li"><div class="ld" style="background:#ff9800"></div><span style="color:#ff9800">WLK</span></div>
+            <div class="li"><div class="ld" style="background:var(--idle)"></div><span style="color:var(--idle)">IDL</span></div>
+            <div class="li"><span style="color:var(--accent)">→ Airflow</span></div>
+          </div>
+          <div class="sc-wrap"><canvas id="scatterC"></canvas></div>
+        </div>
+        <!-- Scatter zoom + pan controls -->
+        <div class="sc-ctrls">
+          <!-- Row 1: zoom -->
+          <div class="sc-zoom-row">
+            <button class="sc-btn zoom" onclick="scZoom(1.3)" title="Zoom in">＋</button>
+            <button class="sc-btn reset-v" onclick="scReset()" title="Reset view">⌖ RST</button>
+            <button class="sc-btn zoom" onclick="scZoom(0.77)" title="Zoom out">－</button>
+          </div>
+          <!-- Row 2: d-pad -->
+          <div class="sc-dpad">
+            <button class="sc-btn up"     onclick="scPan(0, 50)">↑</button>
+            <button class="sc-btn left"   onclick="scPan(50, 0)">←</button>
+            <button class="sc-btn center" style="font-size:10px;color:var(--text-dim)">PAN</button>
+            <button class="sc-btn right"  onclick="scPan(-50,0)">→</button>
+            <button class="sc-btn down"   onclick="scPan(0,-50)">↓</button>
+          </div>
+        </div>
+        <div style="height:4px"></div>
+      </div>
+      <div class="card">
+        <div class="ch">
+          <span class="ct">Pose Analytics</span>
+          <span style="font-size:9px;color:var(--text-dim)"><span style="color:#00ff00">● Head</span> <span style="color:#f44">● AbdTip</span></span>
+        </div>
+        <div style="padding:0 10px 10px">
+          <div class="feed-wrap"><canvas id="poseC" style="width:100%;height:100%"></canvas>
+          <div class="feed-badge">9-kpt skeleton</div></div>
+        </div>
+        <!-- Pose zoom + pan controls -->
+        <div class="sc-ctrls" style="padding:8px 12px 10px">
+          <div class="sc-zoom-row">
+            <button class="sc-btn zoom" onclick="poseZoom(1.3)">＋</button>
+            <button class="sc-btn reset-v" onclick="poseReset()">⌖ RST</button>
+            <button class="sc-btn zoom" onclick="poseZoom(0.77)">－</button>
+          </div>
+          <div class="sc-dpad">
+            <button class="sc-btn up"     onclick="posePan(0, 50)">↑</button>
+            <button class="sc-btn left"   onclick="posePan(50, 0)">←</button>
+            <button class="sc-btn center" style="font-size:10px;color:var(--text-dim)">PAN</button>
+            <button class="sc-btn right"  onclick="posePan(-50, 0)">→</button>
+            <button class="sc-btn down"   onclick="posePan(0,-50)">↓</button>
+          </div>
+        </div>
+        <div class="ch" style="padding-top:4px"><span class="ct">Airflow Orientations</span></div>
+        <div class="ao" id="aoChips"><div style="font-size:11px;color:var(--text-dim);padding:4px">Waiting for data…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: METRICS -->
+  <div class="tab" id="tab-metrics">
+    <div class="sb active" id="statusBanner">
+      <div class="sb-icon">🔥</div>
+      <div><div class="sb-lbl">Colony Status</div><div class="sb-val" id="bannerVal">CONNECTING…</div></div>
+    </div>
+    <div class="m-grid">
+      <div class="mc"><div class="ml">Colony Flux Σ</div><div class="mv" id="m-flux">—</div><div class="ms">avg · all bees</div></div>
+      <div class="mc"><div class="ml">Fanning</div><div class="mv fc" id="m-fan">— / —</div><div class="ms">bees detected</div></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Colony Avg Flux</span></div>
+      <div class="gw">
+        <div class="gr"><span class="gl">Current: <b id="g-val">—</b></span><span class="gl">Threshold: 2.5</span></div>
+        <div class="flux-track"><div class="flux-fill" id="fluxFill" style="width:0%"><div class="flux-thr"></div></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Flux History</span></div>
+      <div style="padding:0 10px 12px"><canvas id="fluxC" height="110"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="ct">Mean Movement (px/s)</span><span class="ct" id="beeCountLbl"></span></div>
+      <div class="bl" id="beeList"></div>
+    </div>
+  </div>
+
+  <!-- TAB: SETTINGS -->
+  <div class="tab" id="tab-settings">
+    <div class="card">
+      <div class="ch"><span class="ct">⚙ Real-Time Tuning</span><span style="font-size:10px;color:var(--text-dim)">Sent live to Python</span></div>
+      <div class="sl" id="settingsList"></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── NAV ── -->
+<nav class="nav">
+  <div class="ntabs">
+    <button class="ntab active" onclick="switchTab('live',this)"><span class="ni">📹</span><span>Live</span><div class="nb"></div></button>
+    <button class="ntab" onclick="switchTab('analytics',this)"><span class="ni">📊</span><span>Scatter</span><div class="nb"></div></button>
+    <button class="ntab" onclick="switchTab('metrics',this)"><span class="ni">📈</span><span>Metrics</span><div class="nb"></div></button>
+    <button class="ntab" onclick="switchTab('settings',this)"><span class="ni">⚙️</span><span>Settings</span><div class="nb"></div></button>
+  </div>
+</nav>
+
+<script>
+/* ── STATE ── */
+let socket=null, serverUrl='', dark=true;
+const fH=[];  // flux history
+let scView={zoom:1,panX:0,panY:0};
+function scZoom(f){scView.zoom=Math.max(.25,Math.min(8,scView.zoom*f));}
+function scPan(dx,dy){scView.panX+=dx;scView.panY+=dy;}
+function scReset(){scView={zoom:1,panX:0,panY:0};}
+let poseView={zoom:1,panX:0,panY:0};
+function poseZoom(f){poseView.zoom=Math.max(.25,Math.min(8,poseView.zoom*f));}
+function posePan(dx,dy){poseView.panX+=dx;poseView.panY+=dy;}
+function poseReset(){poseView={zoom:1,panX:0,panY:0};}
+
+/* ── THEME ── */
+document.getElementById('themeBtn').onclick=()=>{
+  dark=!dark; document.body.classList.toggle('light',!dark);
+  document.getElementById('themeBtn').textContent=dark?'☀️':'🌙';
+};
+
+/* ── TABS ── */
+function switchTab(id,btn){
+  document.querySelectorAll('.tab').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ntab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='analytics'){
+    // defer resize until layout is painted
+    requestAnimationFrame(()=>{ resC(scatterC); resC(poseC); });
+  }
+  if(id==='metrics') buildFlux();
+}
+
+/* ── CONNECT ── */
+async function doConnect(){
+  const raw=document.getElementById('urlInput').value.trim();
+  if(!raw){setErr('Please enter the session URL from the BeeVision window.');return;}
+  const url=raw.endsWith('/')?raw.slice(0,-1):raw;
+  const note=document.getElementById('noteInput').value.trim();
+  setErr('');
+  document.getElementById('connectBtn').disabled=true;
+  document.getElementById('connectBtn').textContent='Connecting…';
+
+  // Verify reachable
+  try{
+    const r=await fetch(url+'/ping',{
+      headers:{'ngrok-skip-browser-warning':'true'},
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!r.ok) throw new Error('Server responded with error');
+  }catch(e){
+    setErr('Cannot reach that URL. Make sure: 1) Python app is running  2) STREAM button is clicked  3) URL is correct (include https://)');
+    document.getElementById('connectBtn').disabled=false;
+    document.getElementById('connectBtn').textContent='📡  Connect & Stream';
+    return;
+  }
+
+  serverUrl=url;
+  if(note) document.getElementById('noteDisplay').textContent=note;
+
+  // MJPEG fallback (works on GitHub Pages / same-origin; may not work from file://)
+  // Primary video delivery is via Socket.IO track_frame / heat_frame events
+  try {
+    document.getElementById('trackImg').src=url+'/stream/tracking?ngrok-skip-browser-warning=true';
+    document.getElementById('heatImg').src=url+'/stream/heatmap?ngrok-skip-browser-warning=true';
+  } catch(e) {}
+
+  // Connect Socket.IO
+  connectSocket(url);
+
+  // Hide splash
+  document.getElementById('splash').classList.add('hide');
+}
+
+function connectSocket(url){
+  if(socket) socket.disconnect();
+  socket=io(url,{
+    transports:['websocket','polling'],
+    reconnection:true,
+    reconnectionDelay:2000,
+    extraHeaders:{'ngrok-skip-browser-warning':'true'}
+  });
+
+  socket.on('connect',()=>{
+    document.getElementById('offline').classList.remove('show');
+    document.getElementById('connBadge').className='conn-badge ok';
+    document.getElementById('connTxt').textContent='CONNECTED';
+    setTimeout(()=>{
+      document.getElementById('connBadge').className='conn-badge live';
+      document.getElementById('connTxt').textContent='LIVE';
+    },1500);
+  });
+
+  socket.on('disconnect',()=>{
+    document.getElementById('offline').classList.add('show');
+  });
+
+  socket.on('metrics',  onMetrics);
+  socket.on('scatter',  onScatter);
+  // Video frames via Socket.IO (works from any origin including file://)
+  socket.on('track_frame', b64 => {
+    const img = document.getElementById('trackImg');
+    img.src = 'data:image/jpeg;base64,' + b64;
+    img.style.display = 'block';
+  });
+  socket.on('heat_frame', b64 => {
+    const img = document.getElementById('heatImg');
+    img.src = 'data:image/jpeg;base64,' + b64;
+    img.style.display = 'block';
+  });
+}
+
+function disconnect(){
+  if(socket){socket.disconnect();socket=null;}
+  document.getElementById('trackImg').src='';
+  document.getElementById('heatImg').src='';
+  document.getElementById('splash').classList.remove('hide');
+  document.getElementById('connectBtn').disabled=false;
+  document.getElementById('connectBtn').textContent='📡  Connect & Stream';
+}
+
+function setErr(msg){document.getElementById('splashErr').textContent=msg;}
+
+/* ── COMMAND ── */
+function sendCmd(cmd){
+  if(socket&&socket.connected) socket.emit('command',{cmd});
+}
+
+/* ── METRICS HANDLER ── */
+function onMetrics(m){
+  // Stats strip
+  setText('s-fan',   m.fanning);
+  setText('s-total', m.bees);
+  setText('s-flux',  m.flux?.toFixed(2));
+  setText('s-frame', m.frame);
+  // Big metrics
+  setText('m-flux',  m.flux?.toFixed(2));
+  setText('m-fan',   `${m.fanning}/${m.bees}`);
+  setText('g-val',   m.flux?.toFixed(2));
+  // Flux fill
+  const pct=Math.min(100,(m.flux||0)/10*100).toFixed(0);
+  document.getElementById('fluxFill').style.width=pct+'%';
+  // Status banner
+  const active=m.fanning>0;
+  const banner=document.getElementById('statusBanner');
+  banner.className='sb '+(active?'active':'idle');
+  setText('bannerVal',active?'FANNING ACTIVE':'MONITORING');
+  // Viewer count
+  if(m.viewers!=null) setText('viewerBadge','👁 '+(m.viewers||1));
+  // Flux history
+  if(m.flux!=null){fH.push(parseFloat(m.flux));if(fH.length>300)fH.shift();}
+  // Only redraw flux chart when metrics tab is active (avoids 0-width canvas)
+  if(document.getElementById('tab-metrics').classList.contains('active')) buildFlux();
+  // Bee list
+  if(m.bee_list) buildBeeList(m.bee_list);
+  // Airflow chips
+  if(m.bee_list){
+    const fans=m.bee_list.filter(b=>b.status==='FAN');
+    const chips=fans.slice(0,8).map(b=>`<div class="aoc">ID:${b.id} ${b.orient!=null?(b.orient>0?'+':'')+b.orient.toFixed(0)+'°':'?'}</div>`).join('');
+    document.getElementById('aoChips').innerHTML=chips||'<div style="font-size:11px;color:var(--text-dim);padding:4px">No fanning bees</div>';
+  }
+}
+
+function setText(id,v){const el=document.getElementById(id);if(el&&v!=null)el.textContent=v;}
+
+/* ── BEE LIST (throttled — no flicker) ── */
+const SC={FAN:'#ff1744',MOV:'#ffeb3b',FLY:'#4fc3f7',WLK:'#ff9800',IDL:'#00e676'};
+const PC={FAN:'pf',IDL:'pi',MOV:'pm',FLY:'pfly',WLK:'pwlk'};
+let _lastBeeRebuild=0;
+let _lastBeeData=[];
+function buildBeeList(bees){
+  const el=document.getElementById('beeList');
+  if(!el)return;
+  _lastBeeData=bees;
+  const now=Date.now();
+  if(now-_lastBeeRebuild < 450){
+    // Just update bar widths and values in-place (no DOM rebuild = no flicker)
+    bees.forEach(b=>{
+      const bar=document.getElementById('bb-'+b.id);
+      const val=document.getElementById('bv-'+b.id);
+      if(bar){const pct=Math.min(100,(b.move||0)/60*100).toFixed(0);bar.style.width=pct+'%';}
+      if(val) val.textContent=(b.move||0).toFixed(1);
+    });
+    return;
+  }
+  _lastBeeRebuild=now;
+  setText('beeCountLbl', bees.length+' bees');
+  el.innerHTML=bees.map(b=>{
+    const col=SC[b.status]||'#aaa';
+    const pct=Math.min(100,(b.move||0)/60*100).toFixed(0);
+    const pc=PC[b.status]||'pi';
+    return`<div class="br"><span class="bid">ID ${b.id}</span><span class="bp ${pc}">${b.status}</span><div class="bbw"><div class="bb" id="bb-${b.id}" style="width:${pct}%;background:${col}"></div></div><span class="bv" id="bv-${b.id}">${(b.move||0).toFixed(1)}</span></div>`;
+  }).join('');
+}
+
+/* ── SCATTER HANDLER ── */
+let latestScatter={};
+function onScatter(s){ latestScatter=s; }
+
+/* ── CANVAS HELPERS ── */
+function resC(c){
+  const r=c.parentElement.getBoundingClientRect(),d=devicePixelRatio||1;
+  c.width=r.width*d;c.height=r.height*d;
+  const x=c.getContext('2d');x.scale(d,d);c._w=r.width;c._h=r.height;
+}
+let fanAng=0;
+
+/* ── Arrow helper (used by drawScatter and drawPoseC) ── */
+function drawArrowCtx(ctx,x1,y1,x2,y2,col){
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
+  if(len<4)return;
+  const ux=dx/len,uy=dy/len,px=-uy,py=ux;
+  const h=Math.min(len*.32,14),w=h*.48;
+  ctx.save();
+  ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2-ux*h,y2-uy*h);ctx.stroke();
+  const p=new Path2D();
+  p.moveTo(x2,y2);
+  p.lineTo(x2-ux*h-px*w,y2-uy*h-py*w);
+  p.lineTo(x2-ux*h+px*w,y2-uy*h+py*w);
+  p.closePath();
+  ctx.fillStyle=col;ctx.fill(p);
+  ctx.restore();
+}
+function drawScatter(){
+  const c=scatterC;if(!c._w)return;
+  const x=c.getContext('2d'),W=c._w,H=c._h,sx=W/640,sy=H/480;
+  x.fillStyle='#050508';x.fillRect(0,0,W,H);
+  x.strokeStyle='rgba(255,255,255,.05)';x.lineWidth=1;
+  for(let i=0;i<=8;i++){x.beginPath();x.moveTo(i*W/8,0);x.lineTo(i*W/8,H);x.stroke();}
+  for(let i=0;i<=6;i++){x.beginPath();x.moveTo(0,i*H/6);x.lineTo(W,i*H/6);x.stroke();}
+
+  Object.entries(latestScatter).forEach(([tid,b])=>{
+    if(!b.cx||!b.cy)return;
+    const cx=b.cx*sx,cy=b.cy*sy,col=SC[b.status]||'#888';
+    // Trail
+    const trail=b.trail||[];
+    if(trail.length>1){x.beginPath();x.strokeStyle=col+'55';x.lineWidth=1.5;
+      trail.forEach((pt,i)=>{const tx=(pt.x||pt[0]||0)*sx,ty=(pt.y||pt[1]||0)*sy;i===0?x.moveTo(tx,ty):x.lineTo(tx,ty);});x.stroke();}
+    if(b.status==='FAN'){
+      x.save();x.shadowColor='#ff1744';x.shadowBlur=8;
+      drawFan(x,cx,cy,fanAng,Math.min(14*sx,20));x.restore();
+      // Airflow arrow from scatter kpts if available
+    }else{
+      x.beginPath();x.arc(cx,cy,5,0,Math.PI*2);x.fillStyle=col;x.fill();
+      x.strokeStyle='#000';x.lineWidth=.8;x.stroke();
+    }
+  });
+  fanAng+=.04;
+}
+let _starPhase=0;
+
+function drawStarburst(ctx,cx,cy,r){
+  const spikes=8;
+  const outerR=r*(1+0.28*Math.sin(_starPhase*3.5));
+  const innerR=outerR*0.32;
+  ctx.save();
+  ctx.shadowColor='#ff1744';ctx.shadowBlur=14;
+  ctx.beginPath();
+  for(let i=0;i<spikes*2;i++){
+    const a=(i*Math.PI/spikes)-Math.PI/2;
+    const rr=i%2===0?outerR:innerR;
+    i===0?ctx.moveTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr)
+         :ctx.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle='#ff1744';ctx.fill();
+  // bright core
+  ctx.shadowBlur=0;
+  ctx.beginPath();ctx.arc(cx,cy,innerR*0.5,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,0.85)';ctx.fill();
+  ctx.restore();
+}
+
+function drawBeeMarker(ctx,cx,cy,status,dirRad,r){
+  const col=SC[status]||'#888';
+  // FLY: ghost motion-blur behind body
+  if(status==='FLY'){
+    for(let j=1;j<=2;j++){
+      ctx.save();ctx.globalAlpha=0.22-j*0.07;
+      ctx.beginPath();
+      ctx.arc(cx-Math.cos(dirRad)*r*1.7*j,cy-Math.sin(dirRad)*r*1.7*j,r*(0.65-j*0.15),0,Math.PI*2);
+      ctx.fillStyle=col;ctx.fill();ctx.restore();
+    }
+  }
+  // Circle (body/thorax)
+  ctx.save();ctx.shadowColor=col;ctx.shadowBlur=7;
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle=col;ctx.fill();ctx.restore();
+  ctx.strokeStyle='rgba(0,0,0,0.45)';ctx.lineWidth=0.8;ctx.stroke();
+  // Direction triangle (abdomen)
+  const triD=r*1.4,triS=r*0.82,perp=dirRad+Math.PI/2;
+  const tx=cx+Math.cos(dirRad)*triD,ty=cy+Math.sin(dirRad)*triD;
+  ctx.save();ctx.shadowColor=col;ctx.shadowBlur=4;
+  ctx.beginPath();
+  ctx.moveTo(tx+Math.cos(dirRad)*triS,ty+Math.sin(dirRad)*triS);
+  ctx.lineTo(tx+Math.cos(perp)*triS*0.5,ty+Math.sin(perp)*triS*0.5);
+  ctx.lineTo(tx-Math.cos(perp)*triS*0.5,ty-Math.sin(perp)*triS*0.5);
+  ctx.closePath();ctx.fillStyle=col;ctx.fill();ctx.restore();
+}
+const SKEL_LINKS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[0,7],[7,8]];
+const KPT_COLS=['#00ff00','#64ff00','#c8ff00','#ffc800','#4444ff',
+                '#ff64ff','#ff00ff','#6464ff','#ff2222'];
+function drawPoseC(){
+  const c=poseC;if(!c._w)return;
+  const x=c.getContext('2d'),W=c._w,H=c._h,sx=W/640,sy=H/480;
+  x.fillStyle='#080810';x.fillRect(0,0,W,H);
+  x.save();
+  x.translate(poseView.panX,poseView.panY);
+  x.scale(poseView.zoom,poseView.zoom);
+  x.strokeStyle='rgba(255,255,255,.04)';x.lineWidth=1;
+  for(let i=0;i<=8;i++){x.beginPath();x.moveTo(i*W/8,0);x.lineTo(i*W/8,H);x.stroke();}
+  for(let i=0;i<=6;i++){x.beginPath();x.moveTo(0,i*H/6);x.lineTo(W,i*H/6);x.stroke();}
+  const entries=Object.entries(latestScatter);
+  if(entries.length===0){
+    x.fillStyle='rgba(0,229,255,0.18)';x.font='12px JetBrains Mono';
+    x.textAlign='center';x.fillText('Waiting for pose data…',W/2,H/2);x.textAlign='left';return;}
+  entries.forEach(([tid,b])=>{
+    const kpts=b.kpts;
+    if(!kpts||kpts.length<2)return;
+    // skeleton links
+    SKEL_LINKS.forEach(([a,bi])=>{
+      if(a>=kpts.length||bi>=kpts.length)return;
+      const [x1,y1,c1]=kpts[a],[x2,y2,c2]=kpts[bi];
+      if(c1<0.15||c2<0.15)return;
+      x.strokeStyle='rgba(200,200,200,0.6)';x.lineWidth=1.5;
+      x.beginPath();x.moveTo(x1*sx,y1*sy);x.lineTo(x2*sx,y2*sy);x.stroke();
+    });
+    // keypoints
+    kpts.forEach((kp,i)=>{
+      const[px,py,pc]=kp;if(pc<0.15)return;
+      x.beginPath();x.arc(px*sx,py*sy,4,0,Math.PI*2);
+      x.fillStyle=KPT_COLS[i]||'#aaa';x.fill();
+      x.strokeStyle='rgba(0,0,0,.8)';x.lineWidth=0.8;x.stroke();
+    });
+    // airflow arrow (head→abdtip) for FAN bees
+    if(b.status==='FAN'&&kpts.length>=5){
+      const h=kpts[0],a=kpts[4];
+      if(h[2]>0.18&&a[2]>0.18){
+        x.save();x.shadowColor='#00e5ff';x.shadowBlur=6;
+        drawArrowCtx(x,h[0]*sx,h[1]*sy,a[0]*sx,a[1]*sy,'#00e5ff');
+        x.restore();
+      }
+    }
+    // ID label
+    if(kpts[0]&&kpts[0][2]>0.15){
+      const col=SC[b.status]||'#aaa';
+      x.fillStyle=col;x.font='bold 10px JetBrains Mono';
+      x.fillText('ID:'+tid,kpts[0][0]*sx+5,kpts[0][1]*sy-6);
+    }
+  });
+}
+/* ── FLUX CHART ── */
+const fluxC=document.getElementById('fluxC');
+function buildFlux(){
+  const d=devicePixelRatio||1;
+  let w=fluxC.parentElement.offsetWidth-20;
+  if(w<=10) w=window.innerWidth-140; // fallback when tab hidden
+  fluxC.style.width=w+'px';fluxC.width=w*d;fluxC.height=110*d;
+  const x=fluxC.getContext('2d');x.scale(d,d);const W=w,H=110;
+  x.fillStyle=dark?'#0d0d1a':'#f8fafc';x.fillRect(0,0,W,H);
+  const pts=fH.slice(-Math.floor(W/2));if(pts.length<2)return;
+  const ty=H-(2.5/10)*H;
+  x.strokeStyle='rgba(255,23,68,.4)';x.lineWidth=1;x.setLineDash([4,4]);
+  x.beginPath();x.moveTo(0,ty);x.lineTo(W,ty);x.stroke();x.setLineDash([]);
+  x.fillStyle='rgba(255,23,68,.6)';x.font='9px JetBrains Mono';x.fillText('2.5',4,ty-4);
+  const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'rgba(0,229,255,.35)');g.addColorStop(1,'rgba(0,229,255,0)');
+  x.beginPath();pts.forEach((v,i)=>{const px=(i/(pts.length-1))*W,py=H-(v/10)*H;i===0?x.moveTo(px,py):x.lineTo(px,py);});
+  x.lineTo(W,H);x.lineTo(0,H);x.closePath();x.fillStyle=g;x.fill();
+  x.beginPath();pts.forEach((v,i)=>{const px=(i/(pts.length-1))*W,py=H-(v/10)*H;i===0?x.moveTo(px,py):x.lineTo(px,py);});
+  x.strokeStyle='#00e5ff';x.lineWidth=2;x.stroke();
+}
+/* ── SETTINGS ── */
+const PARAMS=[
+  {n:'Box Expansion',k:'box_expansion',lo:10,hi:30,v:15,sc:10,f:v=>`${v.toFixed(1)}×`},
+  {n:'Center Exclusion',k:'exclusion_scale',lo:30,hi:90,v:63,sc:100,f:v=>`${v.toFixed(2)}`},
+  {n:'Base Flux Threshold',k:'base_threshold',lo:5,hi:150,v:25,sc:10,f:v=>`${v.toFixed(1)}`},
+  {n:'Flux Tolerance',k:'tolerance',lo:5,hi:50,v:20,sc:100,f:v=>`±${(v*100).toFixed(0)}%`},
+  {n:'Motion Threshold',k:'motion_threshold',lo:30,hi:800,v:150,sc:10,f:v=>`${v.toFixed(0)} px/s`},
+  {n:'Flux Gain',k:'flux_gain',lo:10,hi:200,v:50,sc:10,f:v=>`${v.toFixed(1)}×`},
+  {n:'EMA Alpha',k:'decision_alpha',lo:1,hi:50,v:10,sc:100,f:v=>`${v.toFixed(2)}`},
+  {n:'Box Smoothing',k:'box_smoothing',lo:5,hi:50,v:20,sc:100,f:v=>`${v.toFixed(2)}`},
+];
+function buildSettings(){
+  const el=document.getElementById('settingsList');
+  el.innerHTML=PARAMS.map(p=>{const real=p.v/p.sc;const pct=((p.v-p.lo)/(p.hi-p.lo)*100).toFixed(1);
+    return`<div class="sr"><div class="sm"><span class="sn">${p.n}</span><span class="sv" id="sv-${p.k}">${p.f(real)}</span></div><input type="range" min="${p.lo}" max="${p.hi}" value="${p.v}" style="--pct:${pct}%" oninput="updS(this,'${p.k}',${p.sc},${p.lo},${p.hi})"></div>`;}).join('')+
+  `<button class="reset-btn" onclick="resetS()">↺  Reset to Defaults</button>`;}
+function updS(el,key,sc,lo,hi){
+  const p=PARAMS.find(p=>p.k===key);const real=el.value/sc;
+  el.style.setProperty('--pct',((el.value-lo)/(hi-lo)*100).toFixed(1)+'%');
+  document.getElementById('sv-'+key).textContent=p.f(real);
+  if(socket&&socket.connected) socket.emit('command',{cmd:'settings',key,val:real});}
+function resetS(){PARAMS.forEach(p=>{const el=document.querySelector(`input[oninput*="'${p.k}'"]`);if(el){el.value=p.v;updS(el,p.k,p.sc,p.lo,p.hi);}});}
+/* ── CANVAS REFS ── */
+const scatterC=document.getElementById('scatterC'),poseC=document.getElementById('poseC');
+/* ── ANIMATION LOOP ── */
+function autoSize(cv){
+  if(!cv._w || cv._w < 10){
+    const r = cv.parentElement ? cv.parentElement.getBoundingClientRect() : {width:0};
+    if(r.width > 10) resC(cv);
+  }
+}
+function loop(){
+  // Always schedule next frame FIRST — ensures loop never stops even on errors
+  requestAnimationFrame(loop);
+  try {
+    autoSize(scatterC);
+    autoSize(poseC);
+    drawScatter();
+    drawPoseC();
+  } catch(e){
+    // Log silently — never let an error kill the animation loop
+    console.warn('BeeVision render:', e.message);
+  }
+}
+/* ── INIT ── */
+buildSettings();buildFlux();
+window.addEventListener('resize',()=>{[scatterC,poseC].forEach(c=>{if(c._w)resC(c);});buildFlux();});
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
